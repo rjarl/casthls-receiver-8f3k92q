@@ -1,0 +1,264 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>CastHLS DashCast Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/shaka-player/dist/shaka-player.compiled.min.js"></script>
+    <style>
+      :root {
+        --bg: #06080b;
+        --panel: rgba(6, 8, 11, 0.78);
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+        --line: rgba(255, 255, 255, 0.18);
+        --accent: #38bdf8;
+        --warn: #f59e0b;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      video {
+        width: 100%;
+        height: 100%;
+        background: #000;
+        object-fit: contain;
+      }
+
+      .overlay,
+      .remote-debug {
+        position: fixed;
+        z-index: 10;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-sizing: border-box;
+      }
+
+      .overlay {
+        left: 5vw;
+        right: 5vw;
+        bottom: 5vh;
+        padding: 22px 26px;
+      }
+
+      .remote-debug {
+        top: 5vh;
+        right: 5vw;
+        min-width: 340px;
+        padding: 16px 18px;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.5;
+      }
+
+      .remote-debug strong {
+        color: var(--text);
+      }
+
+      .title-row {
+        display: flex;
+        align-items: baseline;
+        gap: 20px;
+      }
+
+      .title {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .state {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .bar {
+        height: 10px;
+        margin-top: 18px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .fill {
+        width: 0%;
+        height: 100%;
+        background: var(--accent);
+        transition: width 180ms linear;
+      }
+
+      .times {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 18px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .error {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        padding: 8vw;
+        box-sizing: border-box;
+        background: var(--bg);
+        color: var(--warn);
+        font-size: 28px;
+        line-height: 1.35;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <video id="video" autoplay playsinline></video>
+    <div id="error" class="error"></div>
+    <div class="remote-debug">
+      <div>Remote: <strong id="remoteStatus">waiting</strong></div>
+      <div>Key: <strong id="lastKey">none</strong></div>
+      <div>Action: <strong id="lastAction">none</strong></div>
+      <div>Events: <strong id="keyCount">0</strong></div>
+    </div>
+    <div class="overlay">
+      <div class="title-row">
+        <div id="title" class="title">CastHLS</div>
+        <div id="state" class="state">Loading</div>
+      </div>
+      <div class="bar"><div id="progress" class="fill"></div></div>
+      <div class="times">
+        <span id="currentTime">--:--</span>
+        <span id="duration">--:--</span>
+      </div>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const src = params.get("src");
+      const title = params.get("title") || "CastHLS";
+      const video = document.getElementById("video");
+      const errorEl = document.getElementById("error");
+      const titleEl = document.getElementById("title");
+      const stateEl = document.getElementById("state");
+      const progressEl = document.getElementById("progress");
+      const currentTimeEl = document.getElementById("currentTime");
+      const durationEl = document.getElementById("duration");
+      const remoteStatusEl = document.getElementById("remoteStatus");
+      const lastKeyEl = document.getElementById("lastKey");
+      const lastActionEl = document.getElementById("lastAction");
+      const keyCountEl = document.getElementById("keyCount");
+      let keyCount = 0;
+
+      titleEl.textContent = title;
+
+      function formatTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
+        const rounded = Math.floor(seconds);
+        const h = Math.floor(rounded / 3600);
+        const m = Math.floor((rounded % 3600) / 60);
+        const s = rounded % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        return `${m}:${String(s).padStart(2, "0")}`;
+      }
+
+      function showError(message) {
+        errorEl.style.display = "grid";
+        errorEl.textContent = message;
+        stateEl.textContent = "Error";
+      }
+
+      function updateProgress() {
+        const current = video.currentTime;
+        const duration = video.duration;
+        currentTimeEl.textContent = formatTime(current);
+        durationEl.textContent = Number.isFinite(duration) && duration > 0 ? formatTime(duration) : "Live";
+        if (Number.isFinite(duration) && duration > 0) {
+          progressEl.style.width = `${Math.max(0, Math.min(100, (current / duration) * 100))}%`;
+        }
+      }
+
+      function setRemoteDebug(key, action) {
+        keyCount += 1;
+        remoteStatusEl.textContent = "receiving";
+        lastKeyEl.textContent = key || "unknown";
+        lastActionEl.textContent = action || "ignored";
+        keyCountEl.textContent = String(keyCount);
+      }
+
+      function seekBy(deltaSeconds) {
+        if (!Number.isFinite(video.duration) || video.duration <= 0) return false;
+        video.currentTime = Math.max(0, Math.min(video.duration - 1, video.currentTime + deltaSeconds));
+        updateProgress();
+        return true;
+      }
+
+      async function togglePlayback() {
+        if (video.paused) {
+          await video.play();
+          return "play";
+        }
+        video.pause();
+        return "pause";
+      }
+
+      async function init() {
+        if (!src) {
+          showError("Missing src parameter.");
+          return;
+        }
+        if (!window.shaka || !shaka.Player.isBrowserSupported()) {
+          showError("Shaka Player is not supported here.");
+          return;
+        }
+
+        const player = new shaka.Player(video);
+        player.addEventListener("error", (event) => {
+          console.error("Shaka error", event.detail);
+          showError("Playback error. The stream may need CORS support or a different receiver.");
+        });
+
+        try {
+          await player.load(src);
+          stateEl.textContent = "Playing";
+          await video.play();
+        } catch (error) {
+          console.error("Load failed", error);
+          showError("Could not load stream.");
+        }
+      }
+
+      video.addEventListener("playing", () => stateEl.textContent = "Playing");
+      video.addEventListener("pause", () => stateEl.textContent = "Paused");
+      video.addEventListener("waiting", () => stateEl.textContent = "Buffering");
+      video.addEventListener("timeupdate", updateProgress);
+      video.addEventListener("durationchange", updateProgress);
+
+      document.addEventListener("keydown", async (event) => {
+        let action = "ignored";
+        if (event.key === "ArrowLeft") action = seekBy(-30) ? "seek -30s" : "seek unavailable";
+        if (event.key === "ArrowRight") action = seekBy(30) ? "seek +30s" : "seek unavailable";
+        if (event.key === "ArrowDown") action = seekBy(-60) ? "seek -60s" : "seek unavailable";
+        if (event.key === "ArrowUp") action = seekBy(60) ? "seek +60s" : "seek unavailable";
+        if (event.key === " " || event.key === "Enter" || event.key === "MediaPlayPause") {
+          action = await togglePlayback();
+        }
+        setRemoteDebug(event.key, action);
+      });
+
+      setInterval(updateProgress, 500);
+      init();
+    </script>
+  </body>
+</html>
