@@ -1,0 +1,73 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>CastHLS DashCast Test</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #101418;
+        color: #f8fafc;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: 100%;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0 0 20px;
+        font-size: 56px;
+      }
+
+      .panel {
+        min-width: 420px;
+        padding: 24px 28px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(0, 0, 0, 0.28);
+        font-size: 24px;
+        line-height: 1.55;
+      }
+
+      strong {
+        color: #38bdf8;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div>
+        <h1>CastHLS DashCast Test</h1>
+        <div class="panel">
+          <div>Status: <strong id="status">alive</strong></div>
+          <div>Key: <strong id="key">none</strong></div>
+          <div>Events: <strong id="count">0</strong></div>
+          <div>Time: <strong id="time">--</strong></div>
+        </div>
+      </div>
+    </main>
+    <script>
+      const keyEl = document.getElementById("key");
+      const countEl = document.getElementById("count");
+      const timeEl = document.getElementById("time");
+      let count = 0;
+
+      document.addEventListener("keydown", (event) => {
+        count += 1;
+        keyEl.textContent = event.key || "unknown";
+        countEl.textContent = String(count);
+      });
+
+      setInterval(() => {
+        timeEl.textContent = new Date().toLocaleTimeString();
+      }, 1000);
+    </script>
+  </body>
+</html>
