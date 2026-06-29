@@ -152,7 +152,8 @@
 
     <script>
       const params = new URLSearchParams(window.location.search);
-      const src = params.get("src");
+      const defaultSrc = "https://nogeovod-fy.atresmedia.com/vsg/_definst_/assets13/2026/04/27/3331038B-400B-4B92-997D-AEE14FC11138/hls.smil/playlist.m3u8";
+      const src = params.get("src") || defaultSrc;
       const title = params.get("title") || "CastHLS";
       const video = document.getElementById("video");
       const errorEl = document.getElementById("error");
