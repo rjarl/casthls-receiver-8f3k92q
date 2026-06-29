@@ -1,0 +1,322 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>CastHLS Receiver</title>
+    <style>
+      :root {
+        --bg: #080a0d;
+        --panel: rgba(8, 10, 13, 0.72);
+        --text: #f8fafc;
+        --muted: #cbd5e1;
+        --line: rgba(255, 255, 255, 0.18);
+        --accent: #38bdf8;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      cast-media-player {
+        --theme-hue: 205;
+        --progress-color: var(--accent);
+        --splash-background-color: var(--bg);
+        --splash-title-color: var(--text);
+        --splash-subtitle-color: var(--muted);
+      }
+
+      .overlay {
+        position: fixed;
+        left: 5vw;
+        right: 5vw;
+        bottom: 5vh;
+        z-index: 10;
+        padding: 22px 26px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-sizing: border-box;
+      }
+
+      .topline {
+        display: flex;
+        align-items: baseline;
+        gap: 20px;
+        min-width: 0;
+      }
+
+      .title {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
+      .state {
+        flex: 0 0 auto;
+        color: var(--muted);
+        font-size: 18px;
+      }
+
+      .bar {
+        position: relative;
+        height: 10px;
+        margin-top: 18px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      .fill {
+        width: 0%;
+        height: 100%;
+        background: var(--accent);
+        transition: width 180ms linear;
+      }
+
+      .times {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 18px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .live .bar {
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0.22), rgba(56, 189, 248, 0.78), rgba(56, 189, 248, 0.22));
+      }
+
+      .live .fill {
+        display: none;
+      }
+
+      .remote-debug {
+        position: fixed;
+        top: 5vh;
+        right: 5vw;
+        z-index: 11;
+        min-width: 320px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-sizing: border-box;
+        color: var(--muted);
+        font-size: 18px;
+        line-height: 1.5;
+      }
+
+      .remote-debug strong {
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .remote-debug .hint {
+        margin-top: 8px;
+        font-size: 15px;
+        color: rgba(203, 213, 225, 0.78);
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      CAF's built-in media element handles the Chromecast TV UI, including the
+      progress bar, controls overlay, buffering state, metadata, and seek state.
+      CastHLS only sends a standard LOAD message from the Mac.
+    -->
+    <cast-media-player></cast-media-player>
+    <div id="overlay" class="overlay live">
+      <div class="topline">
+        <div id="title" class="title">CastHLS</div>
+        <div id="playerState" class="state">Waiting</div>
+      </div>
+      <div class="bar"><div id="progress" class="fill"></div></div>
+      <div class="times">
+        <span id="currentTime">--:--</span>
+        <span id="duration">--:--</span>
+      </div>
+    </div>
+    <div id="remoteDebug" class="remote-debug">
+      <div>Remote: <strong id="remoteStatus">waiting</strong></div>
+      <div>Key: <strong id="lastKey">none</strong></div>
+      <div>Action: <strong id="lastAction">none</strong></div>
+      <div>Events: <strong id="keyCount">0</strong></div>
+      <div class="hint">Left/right seek 30s. Up/down seek 60s. Enter toggles play.</div>
+    </div>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <script>
+      const context = cast.framework.CastReceiverContext.getInstance();
+      const playerManager = context.getPlayerManager();
+      const playbackConfig = new cast.framework.PlaybackConfig();
+      playbackConfig.useShakaForHls = true;
+
+      const overlay = document.getElementById("overlay");
+      const titleEl = document.getElementById("title");
+      const playerStateEl = document.getElementById("playerState");
+      const progressEl = document.getElementById("progress");
+      const currentTimeEl = document.getElementById("currentTime");
+      const durationEl = document.getElementById("duration");
+      const remoteStatusEl = document.getElementById("remoteStatus");
+      const lastKeyEl = document.getElementById("lastKey");
+      const lastActionEl = document.getElementById("lastAction");
+      const keyCountEl = document.getElementById("keyCount");
+      let keyCount = 0;
+      let playbackState = "Waiting";
+      if (new URLSearchParams(window.location.search).get("debug") === "0") {
+        document.getElementById("remoteDebug").style.display = "none";
+      }
+
+      function formatTime(seconds) {
+        if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
+        const rounded = Math.floor(seconds);
+        const h = Math.floor(rounded / 3600);
+        const m = Math.floor((rounded % 3600) / 60);
+        const s = rounded % 60;
+        if (h > 0) {
+          return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        }
+        return `${m}:${String(s).padStart(2, "0")}`;
+      }
+
+      function readNumber(fnName) {
+        try {
+          if (typeof playerManager[fnName] === "function") {
+            return Number(playerManager[fnName]());
+          }
+        } catch (error) {
+          console.warn("CastHLS receiver read failed", fnName, error);
+        }
+        return NaN;
+      }
+
+      function setState(state) {
+        playbackState = state || "Loading";
+        playerStateEl.textContent = playbackState;
+      }
+
+      function setRemoteDebug(key, action) {
+        keyCount += 1;
+        remoteStatusEl.textContent = "receiving";
+        lastKeyEl.textContent = key || "unknown";
+        lastActionEl.textContent = action || "ignored";
+        keyCountEl.textContent = String(keyCount);
+      }
+
+      function updateOverlay() {
+        const current = readNumber("getCurrentTimeSec");
+        const duration = readNumber("getDurationSec");
+        const hasDuration = Number.isFinite(duration) && duration > 0;
+
+        overlay.classList.toggle("live", !hasDuration);
+        currentTimeEl.textContent = formatTime(current);
+        durationEl.textContent = hasDuration ? formatTime(duration) : "Live";
+
+        if (hasDuration) {
+          const percent = Math.max(0, Math.min(100, (current / duration) * 100));
+          progressEl.style.width = `${percent}%`;
+        }
+      }
+
+      function seekBy(deltaSeconds) {
+        const current = readNumber("getCurrentTimeSec");
+        const duration = readNumber("getDurationSec");
+        if (!Number.isFinite(current) || !Number.isFinite(duration) || duration <= 0) {
+          return false;
+        }
+        const target = Math.max(0, Math.min(duration - 1, current + deltaSeconds));
+        try {
+          playerManager.seek({ currentTime: target });
+          return true;
+        } catch (error) {
+          console.warn("CastHLS receiver seek failed", error);
+        }
+        return false;
+      }
+
+      function togglePlayback() {
+        try {
+          if (playbackState === "Paused") {
+            playerManager.play();
+            return "play";
+          }
+          playerManager.pause();
+          return "pause";
+        } catch (error) {
+          console.warn("CastHLS receiver play/pause failed", error);
+          return "play/pause failed";
+        }
+      }
+
+      function addPlayerEvent(name, handler) {
+        const eventType = cast.framework.events.EventType[name];
+        if (eventType) {
+          playerManager.addEventListener(eventType, handler);
+        }
+      }
+
+      playerManager.setMessageInterceptor(
+        cast.framework.messages.MessageType.LOAD,
+        (loadRequestData) => {
+          console.log("CastHLS LOAD", loadRequestData.media && loadRequestData.media.contentId);
+          const media = loadRequestData.media || {};
+          const metadata = media.metadata || {};
+          titleEl.textContent = metadata.title || "CastHLS";
+          return loadRequestData;
+        }
+      );
+
+      addPlayerEvent("PLAYER_LOAD_COMPLETE", () => {
+        setState("Loaded");
+        updateOverlay();
+      });
+
+      addPlayerEvent("PLAYING", () => {
+        setState("Playing");
+        updateOverlay();
+      });
+
+      addPlayerEvent("PAUSE", () => {
+        setState("Paused");
+        updateOverlay();
+      });
+
+      addPlayerEvent("PAUSED", () => {
+        setState("Paused");
+        updateOverlay();
+      });
+
+      addPlayerEvent("BUFFERING", () => {
+        setState("Buffering");
+        updateOverlay();
+      });
+
+      document.addEventListener("keydown", (event) => {
+        let action = "ignored";
+        if (event.key === "ArrowLeft") {
+          action = seekBy(-30) ? "seek -30s" : "seek unavailable";
+        } else if (event.key === "ArrowRight") {
+          action = seekBy(30) ? "seek +30s" : "seek unavailable";
+        } else if (event.key === "ArrowDown") {
+          action = seekBy(-60) ? "seek -60s" : "seek unavailable";
+        } else if (event.key === "ArrowUp") {
+          action = seekBy(60) ? "seek +60s" : "seek unavailable";
+        } else if (event.key === " " || event.key === "Enter" || event.key === "MediaPlayPause") {
+          action = togglePlayback();
+        }
+        setRemoteDebug(event.key, action);
+      });
+
+      setInterval(updateOverlay, 500);
+
+      context.start({ playbackConfig });
+    </script>
+  </body>
+</html>
