@@ -63,6 +63,12 @@
         color: var(--text);
       }
 
+      .remote-debug .small {
+        margin-top: 8px;
+        color: rgba(203, 213, 225, 0.78);
+        font-size: 15px;
+      }
+
       .title-row {
         display: flex;
         align-items: baseline;
@@ -131,6 +137,7 @@
       <div>Key: <strong id="lastKey">none</strong></div>
       <div>Action: <strong id="lastAction">none</strong></div>
       <div>Events: <strong id="keyCount">0</strong></div>
+      <div class="small">Stage: <strong id="stage">boot</strong></div>
     </div>
     <div class="overlay">
       <div class="title-row">
@@ -159,9 +166,19 @@
       const lastKeyEl = document.getElementById("lastKey");
       const lastActionEl = document.getElementById("lastAction");
       const keyCountEl = document.getElementById("keyCount");
+      const stageEl = document.getElementById("stage");
       let keyCount = 0;
+      let player = null;
 
       titleEl.textContent = title;
+
+      window.addEventListener("error", (event) => {
+        showError(`JavaScript error: ${event.message || "unknown"}`);
+      });
+
+      window.addEventListener("unhandledrejection", (event) => {
+        showError(`Playback promise failed: ${event.reason && event.reason.message ? event.reason.message : "unknown"}`);
+      });
 
       function formatTime(seconds) {
         if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
@@ -177,6 +194,7 @@
         errorEl.style.display = "grid";
         errorEl.textContent = message;
         stateEl.textContent = "Error";
+        stageEl.textContent = "error";
       }
 
       function updateProgress() {
@@ -197,6 +215,11 @@
         keyCountEl.textContent = String(keyCount);
       }
 
+      function setStage(stage) {
+        stageEl.textContent = stage;
+        stateEl.textContent = stage;
+      }
+
       function seekBy(deltaSeconds) {
         if (!Number.isFinite(video.duration) || video.duration <= 0) return false;
         video.currentTime = Math.max(0, Math.min(video.duration - 1, video.currentTime + deltaSeconds));
@@ -206,6 +229,7 @@
 
       async function togglePlayback() {
         if (video.paused) {
+          video.muted = false;
           await video.play();
           return "play";
         }
@@ -218,24 +242,36 @@
           showError("Missing src parameter.");
           return;
         }
+        setStage("installing shaka");
+        shaka.polyfill.installAll();
         if (!window.shaka || !shaka.Player.isBrowserSupported()) {
           showError("Shaka Player is not supported here.");
           return;
         }
 
-        const player = new shaka.Player(video);
+        setStage("creating player");
+        player = new shaka.Player(video);
         player.addEventListener("error", (event) => {
           console.error("Shaka error", event.detail);
-          showError("Playback error. The stream may need CORS support or a different receiver.");
+          const code = event.detail && event.detail.code ? ` (${event.detail.code})` : "";
+          showError(`Playback error${code}. The stream may need a different receiver.`);
         });
 
         try {
+          setStage("loading manifest");
           await player.load(src);
-          stateEl.textContent = "Playing";
-          await video.play();
+          setStage("manifest loaded");
+          try {
+            await video.play();
+            setStage("playing");
+          } catch (playError) {
+            console.warn("Autoplay failed", playError);
+            setStage("press enter/play");
+          }
         } catch (error) {
           console.error("Load failed", error);
-          showError("Could not load stream.");
+          const code = error && error.code ? ` (${error.code})` : "";
+          showError(`Could not load stream${code}.`);
         }
       }
 
@@ -247,6 +283,7 @@
 
       document.addEventListener("keydown", async (event) => {
         let action = "ignored";
+        event.preventDefault();
         if (event.key === "ArrowLeft") action = seekBy(-30) ? "seek -30s" : "seek unavailable";
         if (event.key === "ArrowRight") action = seekBy(30) ? "seek +30s" : "seek unavailable";
         if (event.key === "ArrowDown") action = seekBy(-60) ? "seek -60s" : "seek unavailable";
