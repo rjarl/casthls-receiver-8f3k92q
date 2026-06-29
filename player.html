@@ -3,7 +3,6 @@
   <head>
     <meta charset="utf-8">
     <title>CastHLS DashCast Player</title>
-    <script src="https://cdn.jsdelivr.net/npm/shaka-player/dist/shaka-player.compiled.min.js"></script>
     <style>
       :root {
         --bg: #06080b;
@@ -169,8 +168,11 @@
       const stageEl = document.getElementById("stage");
       let keyCount = 0;
       let player = null;
+      let initialized = false;
+      let shakaLoadPromise = null;
 
       titleEl.textContent = title;
+      setStage("press enter to load");
 
       window.addEventListener("error", (event) => {
         showError(`JavaScript error: ${event.message || "unknown"}`);
@@ -228,6 +230,10 @@
       }
 
       async function togglePlayback() {
+        if (!initialized) {
+          await init();
+          return "load stream";
+        }
         if (video.paused) {
           video.muted = false;
           await video.play();
@@ -237,11 +243,28 @@
         return "pause";
       }
 
+      function loadShakaScript() {
+        if (window.shaka) return Promise.resolve();
+        if (shakaLoadPromise) return shakaLoadPromise;
+        setStage("loading shaka js");
+        shakaLoadPromise = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdn.jsdelivr.net/npm/shaka-player/dist/shaka-player.compiled.min.js";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Could not load Shaka script."));
+          document.head.appendChild(script);
+        });
+        return shakaLoadPromise;
+      }
+
       async function init() {
+        if (initialized) return;
+        initialized = true;
         if (!src) {
           showError("Missing src parameter.");
           return;
         }
+        await loadShakaScript();
         setStage("installing shaka");
         shaka.polyfill.installAll();
         if (!window.shaka || !shaka.Player.isBrowserSupported()) {
@@ -295,7 +318,6 @@
       });
 
       setInterval(updateProgress, 500);
-      init();
     </script>
   </body>
 </html>
