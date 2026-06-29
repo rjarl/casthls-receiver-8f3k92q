@@ -153,8 +153,8 @@
     <script>
       const params = new URLSearchParams(window.location.search);
       const defaultSrc = "https://nogeovod-fy.atresmedia.com/vsg/_definst_/assets13/2026/04/27/3331038B-400B-4B92-997D-AEE14FC11138/hls.smil/playlist.m3u8";
-      const src = params.get("src") || defaultSrc;
-      const title = params.get("title") || "CastHLS";
+      let src = params.get("src") || "";
+      let title = params.get("title") || "CastHLS";
       const video = document.getElementById("video");
       const errorEl = document.getElementById("error");
       const titleEl = document.getElementById("title");
@@ -172,7 +172,6 @@
       let initialized = false;
       let shakaLoadPromise = null;
 
-      titleEl.textContent = title;
       setStage("press enter to load");
 
       window.addEventListener("error", (event) => {
@@ -261,10 +260,7 @@
       async function init() {
         if (initialized) return;
         initialized = true;
-        if (!src) {
-          showError("Missing src parameter.");
-          return;
-        }
+        await loadCurrentMedia();
         await loadShakaScript();
         setStage("installing shaka");
         shaka.polyfill.installAll();
@@ -297,6 +293,29 @@
           const code = error && error.code ? ` (${error.code})` : "";
           showError(`Could not load stream${code}.`);
         }
+      }
+
+      async function loadCurrentMedia() {
+        if (src) {
+          titleEl.textContent = title;
+          return;
+        }
+        setStage("loading current media");
+        try {
+          const response = await fetch(`current.json?v=${Date.now()}`, {cache: "no-store"});
+          if (response.ok) {
+            const data = await response.json();
+            src = data.url || "";
+            title = data.title || "CastHLS";
+          }
+        } catch (error) {
+          console.warn("Could not load current.json", error);
+        }
+        if (!src) {
+          src = defaultSrc;
+          title = "CastHLS fallback";
+        }
+        titleEl.textContent = title;
       }
 
       video.addEventListener("playing", () => stateEl.textContent = "Playing");
