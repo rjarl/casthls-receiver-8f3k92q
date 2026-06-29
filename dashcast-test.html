@@ -58,11 +58,33 @@
       const countEl = document.getElementById("count");
       const timeEl = document.getElementById("time");
       let count = 0;
+      let lastBackAt = 0;
+
+      function isBackKey(event) {
+        return event.key === "BrowserBack" ||
+          event.key === "Backspace" ||
+          event.key === "Escape" ||
+          event.key === "GoBack" ||
+          event.keyCode === 8 ||
+          event.keyCode === 27 ||
+          event.keyCode === 166 ||
+          event.code === "BrowserBack";
+      }
 
       document.addEventListener("keydown", (event) => {
         count += 1;
         keyEl.textContent = event.key || "unknown";
         countEl.textContent = String(count);
+        if (isBackKey(event)) {
+          const now = Date.now();
+          if (now - lastBackAt < 2500) {
+            document.body.innerHTML = "<main><div><h1>CastHLS closed</h1></div></main>";
+            window.location.href = "about:blank";
+          } else {
+            lastBackAt = now;
+            document.getElementById("status").textContent = "press back again";
+          }
+        }
       });
 
       setInterval(() => {
