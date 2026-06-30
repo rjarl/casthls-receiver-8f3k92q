@@ -175,6 +175,12 @@
 
       titleEl.textContent = title;
       setStage("press enter to load");
+      try {
+        window.history.replaceState({ casthls: "root" }, "", window.location.href);
+        window.history.pushState({ casthls: "remote-back" }, "", window.location.href);
+      } catch (error) {
+        console.warn("Could not prepare back handling", error);
+      }
 
       window.addEventListener("error", (event) => {
         showError(`JavaScript error: ${event.message || "unknown"}`);
@@ -277,6 +283,18 @@
         return "back armed";
       }
 
+      function handleBackNavigation() {
+        const action = handleBack();
+        setRemoteDebug("BrowserBack", action);
+        if (action !== "exit") {
+          try {
+            window.history.pushState({ casthls: "remote-back" }, "", window.location.href);
+          } catch (error) {
+            console.warn("Could not restore back trap", error);
+          }
+        }
+      }
+
       function loadShakaScript() {
         if (window.shaka) return Promise.resolve();
         if (shakaLoadPromise) return shakaLoadPromise;
@@ -354,6 +372,11 @@
           action = await togglePlayback();
         }
         setRemoteDebug(event.key, action);
+      });
+
+      window.addEventListener("popstate", (event) => {
+        event.preventDefault();
+        handleBackNavigation();
       });
 
       setInterval(updateProgress, 500);
