@@ -2,16 +2,22 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>CastHLS DashCast Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CastHLS Player</title>
     <style>
       :root {
-        --bg: #06080b;
-        --panel: rgba(6, 8, 11, 0.78);
+        --bg: #020305;
         --text: #f8fafc;
         --muted: #cbd5e1;
+        --dim: rgba(203, 213, 225, 0.72);
+        --panel: rgba(2, 3, 5, 0.72);
         --line: rgba(255, 255, 255, 0.18);
         --accent: #38bdf8;
-        --warn: #f59e0b;
+        --danger: #f97373;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       html,
@@ -20,135 +26,268 @@
         height: 100%;
         margin: 0;
         overflow: hidden;
-        background: var(--bg);
+        background: #000;
         color: var(--text);
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
+      body {
+        cursor: none;
+      }
+
       video {
+        position: fixed;
+        inset: 0;
         width: 100%;
         height: 100%;
         background: #000;
         object-fit: contain;
       }
 
-      .overlay,
-      .remote-debug {
+      .chrome {
         position: fixed;
+        inset: 0;
         z-index: 10;
-        border: 1px solid var(--line);
-        background: var(--panel);
-        box-sizing: border-box;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        padding: 7vh 6vw 6vh;
+        opacity: 1;
+        pointer-events: none;
+        transition: opacity 260ms ease;
+        background:
+          linear-gradient(to bottom, rgba(0, 0, 0, 0.68), transparent 32%),
+          linear-gradient(to top, rgba(0, 0, 0, 0.78), transparent 42%);
       }
 
-      .overlay {
-        left: 5vw;
-        right: 5vw;
-        bottom: 5vh;
-        padding: 22px 26px;
+      .chrome.hidden {
+        opacity: 0;
       }
 
-      .remote-debug {
-        top: 5vh;
-        right: 5vw;
-        min-width: 340px;
-        padding: 16px 18px;
-        color: var(--muted);
-        font-size: 18px;
-        line-height: 1.5;
-      }
-
-      .remote-debug strong {
-        color: var(--text);
-      }
-
-      .remote-debug .small {
-        margin-top: 8px;
-        color: rgba(203, 213, 225, 0.78);
-        font-size: 15px;
-      }
-
-      .title-row {
-        display: flex;
-        align-items: baseline;
-        gap: 20px;
+      .top {
+        min-width: 0;
       }
 
       .title {
-        flex: 1 1 auto;
-        min-width: 0;
+        max-width: 76vw;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-size: 28px;
-        font-weight: 700;
+        font-size: 34px;
+        line-height: 1.15;
+        font-weight: 720;
+        letter-spacing: 0;
       }
 
       .state {
-        flex: 0 0 auto;
+        margin-top: 8px;
+        color: var(--dim);
+        font-size: 20px;
+      }
+
+      .center {
+        display: grid;
+        place-items: center;
+      }
+
+      .center-button {
+        width: 112px;
+        height: 112px;
+        display: grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        box-shadow: 0 18px 46px rgba(0, 0, 0, 0.36);
+      }
+
+      .icon {
+        display: block;
+        position: relative;
+      }
+
+      .icon.play {
+        width: 0;
+        height: 0;
+        margin-left: 9px;
+        border-top: 28px solid transparent;
+        border-bottom: 28px solid transparent;
+        border-left: 42px solid var(--text);
+      }
+
+      .icon.pause {
+        width: 42px;
+        height: 54px;
+      }
+
+      .icon.pause::before,
+      .icon.pause::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        width: 14px;
+        height: 54px;
+        border-radius: 3px;
+        background: var(--text);
+      }
+
+      .icon.pause::before {
+        left: 0;
+      }
+
+      .icon.pause::after {
+        right: 0;
+      }
+
+      .bottom {
+        display: grid;
+        gap: 14px;
+      }
+
+      .transport {
+        display: flex;
+        align-items: center;
+        gap: 18px;
         color: var(--muted);
-        font-size: 18px;
+        font-size: 20px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .mini-icon {
+        width: 36px;
+        height: 36px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .mini-icon .icon.play {
+        border-top-width: 9px;
+        border-bottom-width: 9px;
+        border-left-width: 14px;
+        margin-left: 3px;
+      }
+
+      .mini-icon .icon.pause {
+        width: 14px;
+        height: 18px;
+      }
+
+      .mini-icon .icon.pause::before,
+      .mini-icon .icon.pause::after {
+        width: 5px;
+        height: 18px;
+        border-radius: 1px;
+      }
+
+      .time {
+        min-width: 70px;
+      }
+
+      .duration {
+        min-width: 70px;
+        text-align: right;
       }
 
       .bar {
-        height: 10px;
-        margin-top: 18px;
+        position: relative;
+        height: 12px;
         overflow: hidden;
-        background: rgba(255, 255, 255, 0.16);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
       }
 
       .fill {
         width: 0%;
         height: 100%;
+        border-radius: inherit;
         background: var(--accent);
         transition: width 180ms linear;
       }
 
-      .times {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 10px;
-        color: var(--muted);
-        font-size: 18px;
-        font-variant-numeric: tabular-nums;
+      .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 23vh;
+        z-index: 20;
+        min-width: 180px;
+        padding: 12px 18px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--text);
+        font-size: 22px;
+        text-align: center;
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+
+      .toast.visible {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
       }
 
       .error {
         position: fixed;
         inset: 0;
+        z-index: 30;
         display: none;
         place-items: center;
         padding: 8vw;
-        box-sizing: border-box;
         background: var(--bg);
-        color: var(--warn);
-        font-size: 28px;
+        color: var(--danger);
+        font-size: 30px;
         line-height: 1.35;
         text-align: center;
+      }
+
+      .closed {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 32px;
+        text-align: center;
+      }
+
+      @media (max-width: 900px) {
+        .title {
+          font-size: 28px;
+        }
+
+        .center-button {
+          width: 92px;
+          height: 92px;
+        }
       }
     </style>
   </head>
   <body>
     <video id="video" autoplay playsinline></video>
     <div id="error" class="error"></div>
-    <div class="remote-debug">
-      <div>Remote: <strong id="remoteStatus">waiting</strong></div>
-      <div>Key: <strong id="lastKey">none</strong></div>
-      <div>Action: <strong id="lastAction">none</strong></div>
-      <div>Events: <strong id="keyCount">0</strong></div>
-      <div class="small">Stage: <strong id="stage">boot</strong></div>
-    </div>
-    <div class="overlay">
-      <div class="title-row">
+    <div id="chrome" class="chrome">
+      <div class="top">
         <div id="title" class="title">CastHLS</div>
-        <div id="state" class="state">Loading</div>
+        <div id="state" class="state">Press OK to play</div>
       </div>
-      <div class="bar"><div id="progress" class="fill"></div></div>
-      <div class="times">
-        <span id="currentTime">--:--</span>
-        <span id="duration">--:--</span>
+      <div class="center">
+        <div id="centerButton" class="center-button">
+          <span id="centerIcon" class="icon play"></span>
+        </div>
+      </div>
+      <div class="bottom">
+        <div class="transport">
+          <span class="mini-icon"><span id="smallIcon" class="icon play"></span></span>
+          <span id="currentTime" class="time">--:--</span>
+          <div class="bar"><div id="progress" class="fill"></div></div>
+          <span id="duration" class="duration">--:--</span>
+        </div>
       </div>
     </div>
+    <div id="toast" class="toast"></div>
 
     <script>
       const params = new URLSearchParams(window.location.search);
@@ -157,24 +296,25 @@
       const title = params.get("title") || "CastHLS";
       const video = document.getElementById("video");
       const errorEl = document.getElementById("error");
+      const chromeEl = document.getElementById("chrome");
       const titleEl = document.getElementById("title");
       const stateEl = document.getElementById("state");
+      const centerIconEl = document.getElementById("centerIcon");
+      const smallIconEl = document.getElementById("smallIcon");
       const progressEl = document.getElementById("progress");
       const currentTimeEl = document.getElementById("currentTime");
       const durationEl = document.getElementById("duration");
-      const remoteStatusEl = document.getElementById("remoteStatus");
-      const lastKeyEl = document.getElementById("lastKey");
-      const lastActionEl = document.getElementById("lastAction");
-      const keyCountEl = document.getElementById("keyCount");
-      const stageEl = document.getElementById("stage");
-      let keyCount = 0;
+      const toastEl = document.getElementById("toast");
       let player = null;
       let initialized = false;
       let shakaLoadPromise = null;
       let lastBackAt = 0;
+      let controlsTimer = null;
+      let toastTimer = null;
 
       titleEl.textContent = title;
-      setStage("press enter to load");
+      setStage("Press OK to play");
+      showControls(true);
       try {
         window.history.replaceState({ casthls: "root" }, "", window.location.href);
         window.history.pushState({ casthls: "remote-back" }, "", window.location.href);
@@ -200,11 +340,37 @@
         return `${m}:${String(s).padStart(2, "0")}`;
       }
 
+      function showControls(persist) {
+        chromeEl.classList.remove("hidden");
+        clearTimeout(controlsTimer);
+        if (!persist && initialized && !video.paused && !video.ended) {
+          controlsTimer = setTimeout(() => chromeEl.classList.add("hidden"), 3600);
+        }
+      }
+
+      function showToast(message) {
+        toastEl.textContent = message;
+        toastEl.classList.add("visible");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove("visible"), 1200);
+      }
+
+      function setIcon(paused) {
+        const icon = paused ? "play" : "pause";
+        centerIconEl.className = `icon ${icon}`;
+        smallIconEl.className = `icon ${icon}`;
+      }
+
+      function setStage(stage) {
+        stateEl.textContent = stage;
+        showControls(stage !== "Playing");
+      }
+
       function showError(message) {
         errorEl.style.display = "grid";
         errorEl.textContent = message;
-        stateEl.textContent = "Error";
-        stageEl.textContent = "error";
+        setStage("Error");
+        showControls(true);
       }
 
       function updateProgress() {
@@ -214,30 +380,25 @@
         durationEl.textContent = Number.isFinite(duration) && duration > 0 ? formatTime(duration) : "Live";
         if (Number.isFinite(duration) && duration > 0) {
           progressEl.style.width = `${Math.max(0, Math.min(100, (current / duration) * 100))}%`;
+        } else {
+          progressEl.style.width = "100%";
         }
       }
 
-      function setRemoteDebug(key, action) {
-        keyCount += 1;
-        remoteStatusEl.textContent = "receiving";
-        lastKeyEl.textContent = key || "unknown";
-        lastActionEl.textContent = action || "ignored";
-        keyCountEl.textContent = String(keyCount);
-      }
-
-      function setStage(stage) {
-        stageEl.textContent = stage;
-        stateEl.textContent = stage;
-      }
-
       function seekBy(deltaSeconds) {
-        if (!Number.isFinite(video.duration) || video.duration <= 0) return false;
+        if (!Number.isFinite(video.duration) || video.duration <= 0) {
+          showToast("Seek unavailable");
+          return false;
+        }
         video.currentTime = Math.max(0, Math.min(video.duration - 1, video.currentTime + deltaSeconds));
         updateProgress();
+        showToast(deltaSeconds > 0 ? `+${deltaSeconds}s` : `${deltaSeconds}s`);
+        showControls(false);
         return true;
       }
 
       async function togglePlayback() {
+        showControls(false);
         if (!initialized) {
           await init();
           return "load stream";
@@ -267,6 +428,7 @@
 
       function handleBack() {
         const now = Date.now();
+        showControls(true);
         if (now - lastBackAt < 2500) {
           try {
             video.pause();
@@ -274,18 +436,17 @@
           } catch (error) {
             console.warn("Could not unload before exit", error);
           }
-          setStage("exiting");
-          document.body.innerHTML = "<main style='display:grid;place-items:center;width:100%;height:100%;background:#06080b;color:#f8fafc;font:32px system-ui;text-align:center;'>CastHLS closed<br><span style='color:#cbd5e1;font-size:22px;'>Use Stop in CastHLS if Chromecast stays open.</span></main>";
+          document.body.innerHTML = "<main class='closed'>CastHLS closed</main>";
           return "exit";
         }
         lastBackAt = now;
-        setStage("press back again to exit");
+        setStage("Press Back again to exit");
+        showToast("Back again to exit");
         return "back armed";
       }
 
       function handleBackNavigation() {
         const action = handleBack();
-        setRemoteDebug("BrowserBack", action);
         if (action !== "exit") {
           try {
             window.history.pushState({ casthls: "remote-back" }, "", window.location.href);
@@ -298,7 +459,7 @@
       function loadShakaScript() {
         if (window.shaka) return Promise.resolve();
         if (shakaLoadPromise) return shakaLoadPromise;
-        setStage("loading shaka js");
+        setStage("Loading player");
         shakaLoadPromise = new Promise((resolve, reject) => {
           const script = document.createElement("script");
           script.src = "https://cdn.jsdelivr.net/npm/shaka-player/dist/shaka-player.compiled.min.js";
@@ -317,14 +478,13 @@
           return;
         }
         await loadShakaScript();
-        setStage("installing shaka");
+        setStage("Preparing stream");
         shaka.polyfill.installAll();
         if (!window.shaka || !shaka.Player.isBrowserSupported()) {
           showError("Shaka Player is not supported here.");
           return;
         }
 
-        setStage("creating player");
         player = new shaka.Player(video);
         player.addEventListener("error", (event) => {
           console.error("Shaka error", event.detail);
@@ -333,15 +493,15 @@
         });
 
         try {
-          setStage("loading manifest");
+          setStage("Loading stream");
           await player.load(src);
-          setStage("manifest loaded");
+          setStage("Ready");
           try {
             await video.play();
-            setStage("playing");
+            setStage("Playing");
           } catch (playError) {
             console.warn("Autoplay failed", playError);
-            setStage("press enter/play");
+            setStage("Press OK to play");
           }
         } catch (error) {
           console.error("Load failed", error);
@@ -350,18 +510,30 @@
         }
       }
 
-      video.addEventListener("playing", () => stateEl.textContent = "Playing");
-      video.addEventListener("pause", () => stateEl.textContent = "Paused");
-      video.addEventListener("waiting", () => stateEl.textContent = "Buffering");
+      video.addEventListener("playing", () => {
+        setIcon(false);
+        setStage("Playing");
+        showControls(false);
+      });
+      video.addEventListener("play", () => setIcon(false));
+      video.addEventListener("pause", () => {
+        setIcon(true);
+        setStage("Paused");
+        showControls(true);
+      });
+      video.addEventListener("waiting", () => {
+        setStage("Buffering");
+        showControls(true);
+      });
       video.addEventListener("timeupdate", updateProgress);
       video.addEventListener("durationchange", updateProgress);
 
       document.addEventListener("keydown", async (event) => {
         let action = "ignored";
         event.preventDefault();
+        showControls(false);
         if (isBackKey(event)) {
-          action = handleBack();
-          setRemoteDebug(event.key || String(event.keyCode), action);
+          handleBack();
           return;
         }
         if (event.key === "ArrowLeft") action = seekBy(-30) ? "seek -30s" : "seek unavailable";
@@ -371,7 +543,7 @@
         if (event.key === " " || event.key === "Enter" || event.key === "MediaPlayPause") {
           action = await togglePlayback();
         }
-        setRemoteDebug(event.key, action);
+        if (action === "ignored") showToast(event.key || "Remote");
       });
 
       window.addEventListener("popstate", (event) => {
